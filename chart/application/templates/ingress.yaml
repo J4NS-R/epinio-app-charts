@@ -14,9 +14,9 @@ spec:
   ingressClassName: {{ . | quote }}
   {{- end }}
   {{- with $.Values.userConfig.traefik }}
-  {{- with .entryPoints }}
+  {{- with .entrypoint }}
   entryPoints:
-    {{- toYaml . | nindent 4 }}
+    - {{ . | quote }}
   {{- end }}
   {{- end }}
   routes:

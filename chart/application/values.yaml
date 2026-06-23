@@ -75,8 +75,7 @@ userConfig: {}
   # Optional traefik IngressRoute configuration. Not part of the epinio server
   # API; supplied directly via chart values.
   # traefik:
-  #   entryPoints:
-  #     - websecure
+  #   entrypoint: websecure
   #   tls:
   #     certResolver: letsencrypt
   #     options:

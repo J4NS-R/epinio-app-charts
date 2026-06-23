@@ -11,8 +11,7 @@ live under `userConfig.traefik` (outside the epinio server API):
 ```yaml
 userConfig:
   traefik:
-    entryPoints:
-      - websecure
+    entrypoint: websecure
     tls:
       certResolver: letsencrypt
       options:
@@ -20,6 +19,6 @@ userConfig:
         namespace: default
 ```
 
-- `entryPoints` — traefik entrypoint names to listen on.
+- `entrypoint` — traefik entrypoint name to listen on.
 - `tls.certResolver` — traefik certificate resolver to use.
 - `tls.options.name` / `tls.options.namespace` — reference a `TLSOption`.

@@ -52,17 +52,14 @@ tests:
       - notExists:
           path: spec.ingressClassName
 
-  - it: given traefik.entryPoints then entryPoints should be set on the route
+  - it: given traefik.entrypoint then entryPoints should be set on the route as a single-item list
     set:
-      userConfig.traefik.entryPoints:
-        - websecure
-        - web
+      userConfig.traefik.entrypoint: websecure
     asserts:
       - equal:
           path: spec.entryPoints
           value:
             - websecure
-            - web
 
   - it: given traefik.tls.certResolver then tls.certResolver should be set
     set:
