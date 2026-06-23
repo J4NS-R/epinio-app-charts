@@ -52,27 +52,27 @@ tests:
       - notExists:
           path: spec.ingressClassName
 
-  - it: given traefik.entrypoint then entryPoints should be set on the route as a single-item list
+  - it: given traefik_entrypoint then entryPoints should be set on the route as a single-item list
     set:
-      userConfig.traefik.entrypoint: websecure
+      userConfig.traefik_entrypoint: websecure
     asserts:
       - equal:
           path: spec.entryPoints
           value:
             - websecure
 
-  - it: given traefik.tls.certResolver then tls.certResolver should be set
+  - it: given traefik_tls_certResolver then tls.certResolver should be set
     set:
-      userConfig.traefik.tls.certResolver: letsencrypt
+      userConfig.traefik_tls_certResolver: letsencrypt
     asserts:
       - equal:
           path: spec.tls.certResolver
           value: letsencrypt
 
-  - it: given traefik.tls.options then tls.options should be set with name and namespace
+  - it: given traefik_tls_options_name and namespace then tls.options should be set with both
     set:
-      userConfig.traefik.tls.options.name: my-tls-opt
-      userConfig.traefik.tls.options.namespace: default
+      userConfig.traefik_tls_options_name: my-tls-opt
+      userConfig.traefik_tls_options_namespace: default
     asserts:
       - equal:
           path: spec.tls.options.name
@@ -81,9 +81,9 @@ tests:
           path: spec.tls.options.namespace
           value: default
 
-  - it: given only tls.options.name then tls.options should contain only the name
+  - it: given only traefik_tls_options_name then tls.options should contain only the name
     set:
-      userConfig.traefik.tls.options.name: my-tls-opt
+      userConfig.traefik_tls_options_name: my-tls-opt
     asserts:
       - equal:
           path: spec.tls.options.name

@@ -13,11 +13,9 @@ spec:
   {{- with $.Values.epinio.ingress }}
   ingressClassName: {{ . | quote }}
   {{- end }}
-  {{- with $.Values.userConfig.traefik }}
-  {{- with .entrypoint }}
+  {{- with $.Values.userConfig.traefik_entrypoint }}
   entryPoints:
     - {{ . | quote }}
-  {{- end }}
   {{- end }}
   routes:
   - match: Host(`{{ .domain }}`) && PathPrefix(`{{ .path }}`)
@@ -26,17 +24,17 @@ spec:
     - name: {{ include "epinio-app-service-name" $ }}
       port: 8080
   tls:
-    {{- with $.Values.userConfig.traefik }}
-    {{- with .tls }}
-    {{- with .options }}
+    {{- with $.Values.userConfig.traefik_tls_options_name }}
     options:
-      {{- toYaml . | nindent 6 }}
+      name: {{ . | quote }}
+      {{- with $.Values.userConfig.traefik_tls_options_namespace }}
+      namespace: {{ . | quote }}
+      {{- end }}
     {{- end }}
-    {{- with .certResolver }}
+    {{- with $.Values.userConfig.traefik_tls_certResolver }}
     certResolver: {{ . | quote }}
     {{- end }}
-    {{- end }}
-    {{- else }}
+    {{- if and (not $.Values.userConfig.traefik_tls_options_name) (not $.Values.userConfig.traefik_tls_certResolver) }}
     {}
     {{- end }}
 {{- end }}
