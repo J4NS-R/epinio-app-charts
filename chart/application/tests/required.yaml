@@ -1,0 +1,14 @@
+epinio:
+  appName: myapp
+  stageID: 42
+  imageURL: registry.example.com/myapp:1
+  routes:
+    - id: route1
+      domain: app.example.com
+      path: /
+  ingress: ~
+  tlsIssuer: ~
+  env: []
+  configurations: []
+  start: ~
+userConfig: {}

@@ -1,19 +1,16 @@
 apiVersion: v2
-name: epinio-application
-description: The helm chart for epinio applications to be deployed by
+name: epinio-application-traefiked
+description: The helm chart for epinio applications to be deployed by (with traefik native support)
 icon: https://raw.githubusercontent.com/epinio/helm-charts/main/assets/epinio.png
-home: https://github.com/epinio/epinio
+home: https://J4NS-R/epinio-app-charts
 type: application
-version: 0.1.26
+version: 0.0.1
 keywords:
 - epinio
 - paas
-maintainers:
-- email: epinio@krum.io
-  name: Krumware
-- email: team@epinio.io
-  name: SUSE
+maintainers: []
 sources:
-- https://github.com/epinio/helm-charts
+- https://J4NS-R/epinio-app-charts
 annotations:
+  # Same as upstream fork
   artifacthub.io/license: Apache-2.0

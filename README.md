@@ -1,18 +1,25 @@
-# Epinio Helm Charts
+# Epinio Custom AppCharts
 
-<img src="./assets/epinio.png" align="right" width="200" height="50%">
+Forked from [epinio/helm-charts](https://github.com/epinio/helm-charts)
 
-## Usage
+## Features
 
-The documentation is centralized in a uniq place, checkout the [doc website].
+Routing is provided by a traefik `IngressRoute` (instead of a standard
+`Ingress`). The following optional values control the traefik configuration and
+live under `userConfig.traefik` (outside the epinio server API):
 
-[doc website]: https://docs.epinio.io
+```yaml
+userConfig:
+  traefik:
+    entryPoints:
+      - websecure
+    tls:
+      certResolver: letsencrypt
+      options:
+        name: my-tls-option
+        namespace: default
+```
 
-## Helm chart repo
-
-This [repo] is also used as Helm chart repository, by publishing the [index.yaml] through the github-pages feature.
-
-[repo]: https://github.com/epinio/helm-charts
-[index.yaml]: https://epinio.github.io/helm-charts/index.yaml
-
-We are using the chart-releaser-action github action to automatically publish the new chart version when an epinio release is out.
+- `entryPoints` — traefik entrypoint names to listen on.
+- `tls.certResolver` — traefik certificate resolver to use.
+- `tls.options.name` / `tls.options.namespace` — reference a `TLSOption`.

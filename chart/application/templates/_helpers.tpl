@@ -55,3 +55,10 @@ Application listening port
 {{- define "epinio-app-listening-port" -}}
 {{ default 8080 (default (dict "appListeningPort" "8080") .Values.userConfig).appListeningPort }}
 {{- end }}
+
+{{/*
+Application service name (truncated appName)
+*/}}
+{{- define "epinio-app-service-name" -}}
+{{ include "epinio-truncate" .Values.epinio.appName }}
+{{- end }}
