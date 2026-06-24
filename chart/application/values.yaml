@@ -74,7 +74,29 @@ affinity: {}
 userConfig: {}
   # Optional traefik IngressRoute configuration. Not part of the epinio server
   # API; supplied directly via chart values.
-  # traefik_entrypoint: websecure
-  # traefik_tls_certResolver: letsencrypt
-  # traefik_tls_options_name: my-tls-option
-  # traefik_tls_options_namespace: default
+  #
+  # `traefik` is a single composite setting whose value is a JSON document
+  # mapping domain -> traefik configuration, with a reserved "*" key acting as
+  # the fallback for any route whose domain is not explicitly listed. All keys
+  # and inner fields are optional; omitting a field leaves it unset for that
+  # domain.
+  #
+  # Resolution per route, per field:
+  #   config[domain].field -> config["*"].field -> unset
+  #
+  # `tlsOptions` is resolved as a whole object (exact-domain -> "*" -> unset);
+  # within it, `name` and `namespace` are both optional. A malformed value or a
+  # non-object top-level JSON fails the render with a clear message.
+  #
+  # traefik: |
+  #   {
+  #     "*": {
+  #       "entryPoint": "websecure"
+  #     },
+  #     "secure.example.com": {
+  #       "entryPoint":   "websecure",
+  #       "certResolver": "letsencrypt",
+  #       "tlsOptions": { "name": "my-tls-option", "namespace": "default" }
+  #     }
+  #   }
+  # traefik: "{}"

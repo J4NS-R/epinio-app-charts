@@ -1,0 +1,39 @@
+apiVersion: application.epinio.io/v1
+kind: AppChart
+metadata:
+  name: traefiked
+spec:
+  shortDescription: Traefik-native ingress
+  description: Fork of epinio default AppChart with Traefik-native ingressroute
+  helmChart: https://github.com/J4NS-R/epinio-app-charts/releases/download/v0.0.4/epinio-application-traefiked-0.0.4.tgz
+  settings:
+    # supported "types": integer, number (float), string, bool
+    # string types may have an optional `enum` property defining a list of valid options
+    # Defining settings is required and used only for validation when users do `epinio push`
+    # In the final helm values all provided settings will be strings
+    #
+    # `traefik` is a single composite setting whose value is a JSON document
+    # mapping domain -> traefik configuration. Epinio only validates that the
+    # setting exists and is a string; the JSON structure is enforced at chart
+    # render time (a malformed value fails the render with a clear message).
+    #
+    # Schema of the JSON value:
+    #   {
+    #     "*": {                        # "*" is the fallback for any route whose
+    #       "entryPoint":   "websecure",#   domain is not explicitly listed
+    #       "certResolver": "letsencrypt",
+    #       "tlsOptions": {             # optional; both name and namespace
+    #         "name":      "my-opt",    #   are themselves optional
+    #         "namespace": "default"
+    #       }
+    #     },
+    #     "secure.example.com": {        # per-domain overrides
+    #       "entryPoint": "websecure"
+    #     }
+    #   }
+    #
+    # All keys and inner fields are optional. Omitting a field leaves it unset
+    # for that domain. Resolution per route, per field:
+    #   config[domain].field -> config["*"].field -> unset
+    traefik:
+      type: string

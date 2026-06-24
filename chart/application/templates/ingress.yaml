@@ -1,4 +1,8 @@
+{{- $cfg := include "epinio-traefik-config" . | fromJson -}}
 {{- range .Values.epinio.routes }}
+{{- $ep := include "epinio-route-traefik-option" (list $cfg .domain "entryPoint") -}}
+{{- $cr := include "epinio-route-traefik-option" (list $cfg .domain "certResolver") -}}
+{{- $tlsOpts := include "epinio-route-traefik-tls-options" (list $cfg .domain) | fromJson -}}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -13,9 +17,9 @@ spec:
   {{- with $.Values.epinio.ingress }}
   ingressClassName: {{ . | quote }}
   {{- end }}
-  {{- with $.Values.userConfig.traefik_entrypoint }}
+  {{- if not (empty $ep) }}
   entryPoints:
-    - {{ . | quote }}
+    - {{ $ep | quote }}
   {{- end }}
   routes:
   - match: Host(`{{ .domain }}`) && PathPrefix(`{{ .path }}`)
@@ -23,18 +27,21 @@ spec:
     services:
     - name: {{ include "epinio-app-service-name" $ }}
       port: 8080
+  {{- if and (empty $tlsOpts) (empty $cr) }}
+  tls: {}
+  {{- else }}
   tls:
-    {{- with $.Values.userConfig.traefik_tls_options_name }}
+    {{- if not (empty $tlsOpts) }}
     options:
+      {{- with $tlsOpts.name }}
       name: {{ . | quote }}
-      {{- with $.Values.userConfig.traefik_tls_options_namespace }}
+      {{- end }}
+      {{- with $tlsOpts.namespace }}
       namespace: {{ . | quote }}
       {{- end }}
     {{- end }}
-    {{- with $.Values.userConfig.traefik_tls_certResolver }}
-    certResolver: {{ . | quote }}
+    {{- if not (empty $cr) }}
+    certResolver: {{ $cr | quote }}
     {{- end }}
-    {{- if and (not $.Values.userConfig.traefik_tls_options_name) (not $.Values.userConfig.traefik_tls_certResolver) }}
-    {}
-    {{- end }}
-{{- end }}
+  {{- end }}
+{{ end }}
