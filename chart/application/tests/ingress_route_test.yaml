@@ -1,0 +1,264 @@
+suite: ingress route tests
+templates:
+  - templates/ingress.yaml
+values:
+  - required.yaml
+tests:
+  - it: given no traefik userConfig then should render a bare IngressRoute with empty tls and no entryPoints
+    asserts:
+      - hasDocuments:
+           count: 1
+      - isKind:
+           of: IngressRoute
+      - isAPIVersion:
+           of: traefik.io/v1alpha1
+      - notExists:
+           path: spec.entryPoints
+      - equal:
+           path: spec.tls
+           value: {}
+      - notExists:
+           path: spec.tls.options
+      - notExists:
+           path: spec.tls.certResolver
+      - matchRegex:
+           path: spec.routes[0].match
+           pattern: "^Host\\(`app\\.example\\.com`\\) && PathPrefix\\(`/`\\)$"
+      - equal:
+           path: spec.routes[0].kind
+           value: Rule
+      - equal:
+           path: spec.routes[0].services[0].port
+           value: 8080
+
+  - it: given a custom appListeningPort then the route service port should stay 8080 (Service port)
+    set:
+      userConfig.appListeningPort: 9000
+    asserts:
+      - equal:
+           path: spec.routes[0].services[0].port
+           value: 8080
+
+  - it: given epinio.ingress is set then ingressClassName should be set
+    set:
+      epinio.ingress: traefik-lb
+    asserts:
+      - equal:
+           path: spec.ingressClassName
+           value: traefik-lb
+
+  - it: given no epinio.ingress then ingressClassName should not be present
+    asserts:
+      - notExists:
+           path: spec.ingressClassName
+
+  - it: given a traefik "*" entryPoint then entryPoints should be set on every route
+    set:
+      userConfig.traefik: '{"*":{"entryPoint":"websecure"}}'
+    asserts:
+      - equal:
+           path: spec.entryPoints
+           value:
+             - websecure
+
+  - it: given a per-domain entryPoint then it should win over the "*" fallback
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.example.com
+          path: /
+      userConfig.traefik: '{"*":{"entryPoint":"web"},"app.example.com":{"entryPoint":"websecure"}}'
+    asserts:
+      - equal:
+           path: spec.entryPoints
+           value:
+             - websecure
+
+  - it: given a per-domain certResolver then tls.certResolver should be set
+    set:
+      userConfig.traefik: '{"app.example.com":{"certResolver":"letsencrypt"}}'
+    asserts:
+      - equal:
+           path: spec.tls.certResolver
+           value: letsencrypt
+
+  - it: given a per-domain tlsOptions with name and namespace then tls.options should carry both
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsOptions":{"name":"my-tls-opt","namespace":"default"}}}'
+    asserts:
+      - equal:
+           path: spec.tls.options.name
+           value: my-tls-opt
+      - equal:
+           path: spec.tls.options.namespace
+           value: default
+
+  - it: given a per-domain tlsOptions with only name then tls.options should contain only the name
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsOptions":{"name":"my-tls-opt"}}}'
+    asserts:
+      - equal:
+           path: spec.tls.options.name
+           value: my-tls-opt
+      - notExists:
+           path: spec.tls.options.namespace
+
+  - it: given a per-domain tlsOptions with only namespace then tls.options should contain only the namespace
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsOptions":{"namespace":"default"}}}'
+    asserts:
+      - notExists:
+           path: spec.tls.options.name
+      - equal:
+           path: spec.tls.options.namespace
+           value: default
+
+  - it: given "*" tlsOptions and no per-domain tlsOptions then the "*" tlsOptions should apply
+    set:
+      userConfig.traefik: '{"*":{"tlsOptions":{"name":"star-opt","namespace":"star-ns"}}}'
+    asserts:
+      - equal:
+           path: spec.tls.options.name
+           value: star-opt
+      - equal:
+           path: spec.tls.options.namespace
+           value: star-ns
+
+  - it: given per-domain tlsOptions then it should fully override the "*" tlsOptions (no field merge)
+    set:
+      userConfig.traefik: '{"*":{"tlsOptions":{"name":"star-opt","namespace":"star-ns"}},"app.example.com":{"tlsOptions":{"name":"dom-opt"}}}'
+    asserts:
+      - equal:
+           path: spec.tls.options.name
+           value: dom-opt
+      - notExists:
+           path: spec.tls.options.namespace
+
+  - it: given two routes on different domains then each route should resolve its own per-domain entryPoint
+    set:
+      epinio.routes:
+        - id: r1
+          domain: a.example.com
+          path: /
+        - id: r2
+          domain: b.example.com
+          path: /
+      userConfig.traefik: '{"a.example.com":{"entryPoint":"web"},"b.example.com":{"entryPoint":"websecure"}}'
+    asserts:
+      - hasDocuments:
+           count: 2
+      - documentIndex: 0
+        equal:
+           path: spec.entryPoints
+           value:
+             - web
+      - documentIndex: 1
+        equal:
+           path: spec.entryPoints
+           value:
+             - websecure
+
+  - it: given two routes on the same domain then both should resolve the same per-domain entryPoint
+    set:
+      epinio.routes:
+        - id: r1
+          domain: same.example.com
+          path: /
+        - id: r2
+          domain: same.example.com
+          path: /api
+      userConfig.traefik: '{"same.example.com":{"entryPoint":"websecure"}}'
+    asserts:
+      - hasDocuments:
+           count: 2
+      - documentIndex: 0
+        equal:
+           path: spec.entryPoints
+           value:
+             - websecure
+      - documentIndex: 1
+        equal:
+           path: spec.entryPoints
+           value:
+             - websecure
+
+  - it: given a route whose domain is unlisted and no "*" fallback then its options should be unset
+    set:
+      userConfig.traefik: '{"other.example.com":{"entryPoint":"web"}}'
+    asserts:
+      - notExists:
+           path: spec.entryPoints
+      - equal:
+           path: spec.tls
+           value: {}
+      - notExists:
+           path: spec.tls.options
+      - notExists:
+           path: spec.tls.certResolver
+
+  - it: given an empty traefik object then it should render a bare route (equivalent to no setting)
+    set:
+      userConfig.traefik: '{}'
+    asserts:
+      - notExists:
+           path: spec.entryPoints
+      - equal:
+           path: spec.tls
+           value: {}
+
+  - it: given a route with a path and domain then the match rule should combine Host and PathPrefix
+    set:
+      epinio.routes:
+        - id: r2
+          domain: sub.example.com
+          path: /api
+    asserts:
+      - matchRegex:
+           path: spec.routes[0].match
+           pattern: "Host\\(`sub\\.example\\.com`\\) && PathPrefix\\(`/api`\\)"
+
+  - it: given multiple routes then one IngressRoute document per route should be rendered
+    set:
+      epinio.routes:
+        - id: r1
+          domain: a.example.com
+          path: /
+        - id: r2
+          domain: b.example.com
+          path: /v2
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: given a route.secret then no Certificate resource should be rendered (secret support dropped)
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.example.com
+          path: /
+          secret: my-tls-secret
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+      - notExists:
+          path: spec.tls.secretName
+
+  - it: given the chart is rendered then no cert-manager Certificate resource should be present
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: given a malformed traefik JSON then rendering should fail with a clear message
+    set:
+      userConfig.traefik: 'not-json'
+    asserts:
+      - failedTemplate:
+           errorPattern: "userConfig\\.traefik is not valid JSON"
+
+  - it: given a traefik JSON that is not a top-level object then rendering should fail
+    set:
+      userConfig.traefik: '["a","b"]'
+    asserts:
+      - failedTemplate:
+           errorPattern: "userConfig\\.traefik is not valid JSON"

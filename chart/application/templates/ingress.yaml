@@ -1,31 +1,15 @@
+{{- $cfg := include "epinio-traefik-config" . | fromJson -}}
 {{- range .Values.epinio.routes }}
-{{- if not .secret }}
+{{- $ep := include "epinio-route-traefik-option" (list $cfg .domain "entryPoint") -}}
+{{- $cr := include "epinio-route-traefik-option" (list $cfg .domain "certResolver") -}}
+{{- $tlsOpts := include "epinio-route-traefik-tls-options" (list $cfg .domain) | fromJson -}}
 ---
-apiVersion: "cert-manager.io/v1"
-kind: Certificate
-metadata:
-  name: {{ include "epinio-truncate" (print $.Values.epinio.appName "-" .id) }}
-  labels:
-    {{- include "epinio-application.labels" $ | nindent 4 }}
-  annotations:
-    {{- include "epinio-application.annotations" $ | nindent 4 }}
-spec:
-  secretName: {{ include "epinio-truncate" (print $.Values.epinio.appName "-" .id "-tls") }}
-  dnsNames:
-  - {{ .domain | quote }}
-  issuerRef:
-    name : {{ $.Values.epinio.tlsIssuer | quote }}
-    kind: ClusterIssuer
-{{- end }}
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: {{ include "epinio-truncate" (print $.Values.epinio.appName "-" .id) }}
   namespace: {{ $.Release.Namespace | quote }}
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
     {{- include "epinio-application.annotations" $ | nindent 4 }}
   labels:
     {{- include "epinio-application.labels" $ | nindent 4 }}
@@ -33,23 +17,31 @@ spec:
   {{- with $.Values.epinio.ingress }}
   ingressClassName: {{ . | quote }}
   {{- end }}
-  rules:
-    - host: {{ .domain | quote }}
-      http:
-        paths:
-          - backend:
-              service:
-                name: {{ include "epinio-truncate" $.Values.epinio.appName }}
-                port:
-                  number: 8080
-            path: {{ .path | quote }}
-            pathType: ImplementationSpecific
+  {{- if not (empty $ep) }}
+  entryPoints:
+    - {{ $ep | quote }}
+  {{- end }}
+  routes:
+  - match: Host(`{{ .domain }}`) && PathPrefix(`{{ .path }}`)
+    kind: Rule
+    services:
+    - name: {{ include "epinio-app-service-name" $ }}
+      port: 8080
+  {{- if and (empty $tlsOpts) (empty $cr) }}
+  tls: {}
+  {{- else }}
   tls:
-    - hosts:
-      - {{ .domain | quote }}
-{{- if .secret }}
-      secretName: {{ .secret | quote }}
-{{- else }}
-      secretName: {{ include "epinio-truncate" (print $.Values.epinio.appName "-" .id "-tls") }}
-{{- end }}
-{{- end }}
+    {{- if not (empty $tlsOpts) }}
+    options:
+      {{- with $tlsOpts.name }}
+      name: {{ . | quote }}
+      {{- end }}
+      {{- with $tlsOpts.namespace }}
+      namespace: {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    {{- if not (empty $cr) }}
+    certResolver: {{ $cr | quote }}
+    {{- end }}
+  {{- end }}
+{{ end }}

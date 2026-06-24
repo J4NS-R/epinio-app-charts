@@ -1,0 +1,36 @@
+suite: service tests
+templates:
+  - templates/service.yaml
+values:
+  - required.yaml
+tests:
+  - it: given default appListeningPort then service port should be 8080 and targetPort should match it
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8080
+
+  - it: given a custom appListeningPort then targetPort should match it while service port stays 8080
+    set:
+      userConfig.appListeningPort: 9000
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 9000
+
+  - it: given the service is rendered then traefik router annotations should not be present
+    asserts:
+      - notExists:
+          path: metadata.annotations["traefik.ingress.kubernetes.io/router.entrypoints"]
+      - notExists:
+          path: metadata.annotations["traefik.ingress.kubernetes.io/router.tls"]
