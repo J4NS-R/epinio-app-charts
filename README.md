@@ -39,12 +39,13 @@ render with a clear message).
 
 ### Example: `epinio push`
 
-The `traefik` setting is passed as a single JSON string via `-v`. Using `jq -c`
-to compact a JSON document into one line avoids shell quoting issues:
+The `traefik` setting is passed as a single JSON string via `-v`. The flag is
+parsed as CSV (cobra `StringSlice`), so a value containing `"` must be
+CSV-escaped: wrap the whole `name=value` field in double quotes and double
+every inner `"`. With `jq -c` to compact the JSON, this looks like:
 
 ```bash
-epinio push --name nederkaans --app-chart traefiked \
-  -v "traefik=$(jq -c '.' <<'EOF'
+TRAEFIK=$(jq -c '.' <<'EOF'
 {
   "*": {
     "entryPoint": "internalsecure",
@@ -52,5 +53,17 @@ epinio push --name nederkaans --app-chart traefiked \
   }
 }
 EOF
-)"
+)
+epinio push --name nederkaans --app-chart traefiked \
+  -v "\"traefik=${TRAEFIK//\"/\"\"}\""
+```
+
+The `${TRAEFIK//\"/\"\"}` bash parameter expansion doubles every `"` in the
+compacted JSON, and the `\"` at each end produces literal `"` characters that
+wrap the field for the CSV parser. If you prefer, you can skip the variable and
+write the escaped literal yourself:
+
+```bash
+epinio push --name nederkaans --app-chart traefiked \
+  -v "\"traefik={""*"":{""entryPoint"":""internalsecure"",""certResolver"":""step-ca""}}\""
 ```
