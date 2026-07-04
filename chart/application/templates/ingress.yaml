@@ -1,7 +1,9 @@
+{{- include "epinio-validate-no-tls-conflict" . -}}
 {{- $cfg := include "epinio-traefik-config" . | fromJson -}}
 {{- range .Values.epinio.routes }}
 {{- $ep := include "epinio-route-traefik-option" (list $cfg .domain "entryPoint") -}}
 {{- $cr := include "epinio-route-traefik-option" (list $cfg .domain "certResolver") -}}
+{{- $ti := include "epinio-route-traefik-option" (list $cfg .domain "tlsIssuer") -}}
 {{- $tlsOpts := include "epinio-route-traefik-tls-options" (list $cfg .domain) | fromJson -}}
 ---
 apiVersion: traefik.io/v1alpha1
@@ -27,7 +29,7 @@ spec:
     services:
     - name: {{ include "epinio-app-service-name" $ }}
       port: 8080
-  {{- if and (empty $tlsOpts) (empty $cr) }}
+  {{- if and (empty $tlsOpts) (empty $cr) (empty $ti) }}
   tls: {}
   {{- else }}
   tls:
@@ -40,7 +42,9 @@ spec:
       namespace: {{ . | quote }}
       {{- end }}
     {{- end }}
-    {{- if not (empty $cr) }}
+    {{- if not (empty $ti) }}
+    secretName: {{ include "epinio-tls-secret-name" (list $.Values.epinio.appName .domain) | quote }}
+    {{- else if not (empty $cr) }}
     certResolver: {{ $cr | quote }}
     {{- end }}
   {{- end }}

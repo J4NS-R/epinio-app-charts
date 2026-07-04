@@ -20,18 +20,28 @@ userConfig:
         "entryPoint":   "websecure",
         "certResolver": "letsencrypt",
         "tlsOptions": { "name": "my-tls-option", "namespace": "default" }
+      },
+      "issued.example.com": {
+        "entryPoint": "websecure",
+        "tlsIssuer":  "my-cluster-issuer"
       }
     }
 ```
 
 - Top-level keys are domains, plus a reserved `"*"` fallback for any route
   whose domain is not explicitly listed.
-- Inner fields (`entryPoint`, `certResolver`, `tlsOptions`) are all optional;
-  omitting one leaves it unset for that domain.
+- Inner fields (`entryPoint`, `certResolver`, `tlsOptions`, `tlsIssuer`) are
+  all optional; omitting one leaves it unset for that domain.
 - `tlsOptions` is resolved as a whole object (`name` and `namespace` both
   optional inside it).
 - Resolution per route, per field:
   `config[domain].field` -> `config["*"].field` -> unset.
+
+`tlsIssuer` enables cert-manager certificate issuance for a domain. When set,
+the chart generates a cert-manager `Certificate` (one per domain, deduplicated
+across routes sharing that domain) and the `IngressRoute` references it via
+`tls.secretName`. It is mutually exclusive with `certResolver` for the same
+  domain: setting both fails the render with a clear message.
 
 Epinio only validates that the `traefik` setting exists and is a string; the
 JSON structure is enforced at chart render time (a malformed value fails the
@@ -67,3 +77,30 @@ write the escaped literal yourself:
 epinio push --name nederkaans --app-chart traefiked \
   -v "\"traefik={""*"":{""entryPoint"":""internalsecure"",""certResolver"":""step-ca""}}\""
 ```
+
+### Example: cert-managed TLS per domain
+
+To have cert-manager issue the certificate for a domain instead of traefik's
+`certResolver`, set `tlsIssuer` to a `ClusterIssuer` name. The chart generates
+a `Certificate` and wires the `IngressRoute`'s `tls.secretName` to it, so the
+two stay in sync:
+
+```bash
+TRAEFIK=$(jq -c '.' <<'EOF'
+{
+  "*": {
+    "entryPoint": "internalsecure"
+  },
+  "issued.example.com": {
+    "entryPoint": "internalsecure",
+    "tlsIssuer": "my-cluster-issuer"
+  }
+}
+EOF
+)
+epinio push --name nederkaans --app-chart traefiked \
+  -v "\"traefik=${TRAEFIK//\"/\"\"}\""
+```
+
+The `epinio.tlsIssuer` field is deprecated and ignored; use the per-domain
+`tlsIssuer` in `userConfig.traefik` instead.

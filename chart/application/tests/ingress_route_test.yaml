@@ -79,8 +79,58 @@ tests:
       userConfig.traefik: '{"app.example.com":{"certResolver":"letsencrypt"}}'
     asserts:
       - equal:
-           path: spec.tls.certResolver
-           value: letsencrypt
+            path: spec.tls.certResolver
+            value: letsencrypt
+      - notExists:
+            path: spec.tls.secretName
+
+  - it: given a per-domain tlsIssuer then tls.secretName should be set and certResolver absent
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-cluster-issuer"}}'
+    asserts:
+      - equal:
+            path: spec.tls.secretName
+            value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
+      - notExists:
+            path: spec.tls.certResolver
+
+  - it: given a "*" tlsIssuer then tls.secretName should be set on every route
+    set:
+      epinio.routes:
+        - id: r1
+          domain: a.example.com
+          path: /
+        - id: r2
+          domain: b.example.com
+          path: /
+      userConfig.traefik: '{"*":{"tlsIssuer":"star-issuer"}}'
+    asserts:
+      - hasDocuments:
+            count: 2
+      - documentIndex: 0
+        equal:
+            path: spec.tls.secretName
+            value: rmyapp-aexamplecom-tls-88bde42bfaa26aa7c5fdf4de6adff7deb6e8d041
+      - documentIndex: 1
+        equal:
+            path: spec.tls.secretName
+            value: rmyapp-bexamplecom-tls-40ed72b7b27e54f1c9f18c275b70207fc03803a1
+
+  - it: given a per-domain tlsIssuer then tlsOptions should still apply alongside secretName
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-issuer","tlsOptions":{"name":"my-opt","namespace":"default"}}}'
+    asserts:
+      - equal:
+            path: spec.tls.secretName
+            value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
+      - equal:
+            path: spec.tls.options.name
+            value: my-opt
+      - equal:
+            path: spec.tls.options.namespace
+            value: default
+      - notExists:
+            path: spec.tls.certResolver
 
   - it: given a per-domain tlsOptions with name and namespace then tls.options should carry both
     set:
@@ -248,6 +298,20 @@ tests:
   - it: given the chart is rendered then no cert-manager Certificate resource should be present
     asserts:
       - notFailedTemplate: {}
+
+  - it: given both tlsIssuer and certResolver for the same domain then rendering should fail
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-issuer","certResolver":"letsencrypt"}}'
+    asserts:
+      - failedTemplate:
+            errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
+
+  - it: given a "*" tlsIssuer and a per-domain certResolver then rendering should fail
+    set:
+      userConfig.traefik: '{"*":{"tlsIssuer":"my-issuer"},"app.example.com":{"certResolver":"letsencrypt"}}'
+    asserts:
+      - failedTemplate:
+            errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
 
   - it: given a malformed traefik JSON then rendering should fail with a clear message
     set:

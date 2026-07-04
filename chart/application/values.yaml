@@ -16,7 +16,7 @@
 # configpaths        :: sequence (config)      :: names and mount paths of the bound configurations
 # start              :: integer                :: time of deployment, nanoseconds
 # ingress            :: string                 :: ingress class name to use, if any
-# tlsIssuer          :: string                 :: name of cert issuer
+# tlsIssuer          :: string                 :: (deprecated, ignored) use per-domain tlsIssuer in userConfig.traefik instead
 ##
 #  assignment :: map ('name' -> string, 'value' -> string)
 #  route      :: map ('id' -> string, 'domain' -> string, 'path' -> string)
@@ -52,6 +52,10 @@ epinio:
   env: ~
   configurations: ~
   start: ~
+  # NOTE: epinio.tlsIssuer is deprecated and ignored. To have cert-manager
+  # issue a certificate for a route, set `tlsIssuer` per domain in
+  # userConfig.traefik (see below). It is mutually exclusive with
+  # `certResolver` for the same domain.
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -88,6 +92,12 @@ userConfig: {}
   # within it, `name` and `namespace` are both optional. A malformed value or a
   # non-object top-level JSON fails the render with a clear message.
   #
+  # `tlsIssuer` enables cert-manager certificate issuance for a domain. When
+  # set, a cert-manager Certificate resource is generated (one per domain,
+  # deduplicated) and the IngressRoute references it via `tls.secretName`. It
+  # is mutually exclusive with `certResolver` for the same domain: setting both
+  # fails the render with a clear message.
+  #
   # traefik: |
   #   {
   #     "*": {
@@ -97,6 +107,10 @@ userConfig: {}
   #       "entryPoint":   "websecure",
   #       "certResolver": "letsencrypt",
   #       "tlsOptions": { "name": "my-tls-option", "namespace": "default" }
+  #     },
+  #     "issued.example.com": {
+  #       "entryPoint": "websecure",
+  #       "tlsIssuer":  "my-cluster-issuer"
   #     }
   #   }
   # traefik: "{}"

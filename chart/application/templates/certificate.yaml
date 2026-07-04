@@ -1,0 +1,27 @@
+{{- include "epinio-validate-no-tls-conflict" . -}}
+{{- $cfg := include "epinio-traefik-config" . | fromJson -}}
+{{- $seen := dict -}}
+{{- range .Values.epinio.routes }}
+{{- $ti := include "epinio-route-traefik-option" (list $cfg .domain "tlsIssuer") -}}
+{{- if and (ne $ti "") (not (hasKey $seen .domain)) -}}
+{{- $_ := set $seen .domain true -}}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "epinio-tls-secret-name" (list $.Values.epinio.appName .domain) }}
+  namespace: {{ $.Release.Namespace | quote }}
+  annotations:
+    {{- include "epinio-application.annotations" $ | nindent 4 }}
+  labels:
+    {{- include "epinio-application.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ include "epinio-tls-secret-name" (list $.Values.epinio.appName .domain) }}
+  dnsNames:
+    - {{ .domain }}
+  issuerRef:
+    name: {{ $ti }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+{{- end }}
+{{ end }}

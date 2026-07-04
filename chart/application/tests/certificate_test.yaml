@@ -1,0 +1,120 @@
+suite: certificate tests
+templates:
+  - templates/certificate.yaml
+values:
+  - required.yaml
+tests:
+  - it: given no tlsIssuer then no Certificate resource should be rendered
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: given a per-domain tlsIssuer then a Certificate should be rendered referencing that issuer
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-cluster-issuer"}}'
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Certificate
+      - isAPIVersion:
+          of: cert-manager.io/v1
+      - equal:
+          path: metadata.name
+          value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
+      - equal:
+          path: spec.secretName
+          value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
+      - equal:
+          path: spec.dnsNames[0]
+          value: app.example.com
+      - equal:
+          path: spec.issuerRef.name
+          value: my-cluster-issuer
+      - equal:
+          path: spec.issuerRef.kind
+          value: ClusterIssuer
+      - equal:
+          path: spec.issuerRef.group
+          value: cert-manager.io
+
+  - it: given a "*" tlsIssuer then one Certificate per route domain should be rendered
+    set:
+      epinio.routes:
+        - id: r1
+          domain: a.example.com
+          path: /
+        - id: r2
+          domain: b.example.com
+          path: /
+      userConfig.traefik: '{"*":{"tlsIssuer":"star-issuer"}}'
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 0
+        equal:
+          path: spec.dnsNames[0]
+          value: a.example.com
+      - documentIndex: 0
+        equal:
+          path: spec.issuerRef.name
+          value: star-issuer
+      - documentIndex: 1
+        equal:
+          path: spec.dnsNames[0]
+          value: b.example.com
+      - documentIndex: 1
+        equal:
+          path: spec.issuerRef.name
+          value: star-issuer
+
+  - it: given two routes sharing a domain then only one Certificate should be rendered for that domain
+    set:
+      epinio.routes:
+        - id: r1
+          domain: same.example.com
+          path: /
+        - id: r2
+          domain: same.example.com
+          path: /api
+      userConfig.traefik: '{"same.example.com":{"tlsIssuer":"my-issuer"}}'
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.dnsNames[0]
+          value: same.example.com
+
+  - it: given tlsIssuer on only one of two routes then only one Certificate should be rendered
+    set:
+      epinio.routes:
+        - id: r1
+          domain: issued.example.com
+          path: /
+        - id: r2
+          domain: plain.example.com
+          path: /
+      userConfig.traefik: '{"issued.example.com":{"tlsIssuer":"my-issuer"}}'
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.dnsNames[0]
+          value: issued.example.com
+      - equal:
+          path: spec.issuerRef.name
+          value: my-issuer
+
+  - it: given both tlsIssuer and certResolver for the same domain then rendering should fail
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-issuer","certResolver":"letsencrypt"}}'
+    asserts:
+      - failedTemplate:
+          errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
+
+  - it: given a per-domain tlsIssuer overriding a "*" certResolver then rendering should fail
+    set:
+      userConfig.traefik: '{"*":{"certResolver":"letsencrypt"},"app.example.com":{"tlsIssuer":"my-issuer"}}'
+    asserts:
+      - failedTemplate:
+          errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"

@@ -139,3 +139,39 @@ tlsOptions applies, which callers detect via `empty`.
 {{- end -}}
 {{- $out | toJson -}}
 {{- end }}
+
+{{/*
+Resolve the cert-manager Certificate / IngressRoute TLS secret name for a
+domain.
+
+Arguments: (appName, domain)
+Returns the sanitized and truncated form of "<appName>-<domain>-tls" so the
+same secret name is referenced by both the IngressRoute (tls.secretName) and
+the cert-manager Certificate (metadata.name, spec.secretName).
+*/}}
+{{- define "epinio-tls-secret-name" -}}
+{{- $appName := index . 0 -}}
+{{- $domain := index . 1 -}}
+{{ include "epinio-truncate" (print $appName "-" $domain "-tls") }}
+{{- end }}
+
+{{/*
+Ensure no route configures both a traefik certResolver and a cert-manager
+tlsIssuer for the same domain. The two are mutually exclusive: certResolver
+asks traefik to obtain the certificate, while tlsIssuer asks cert-manager to
+do so (the certificate is then referenced via tls.secretName).
+
+Argument: root context (.), so it can read .Values and the parsed traefik
+config. Fails the render with a clear message naming the conflicting domain
+if both are set for any route.
+*/}}
+{{- define "epinio-validate-no-tls-conflict" -}}
+{{- $cfg := include "epinio-traefik-config" . | fromJson -}}
+{{- range .Values.epinio.routes }}
+{{- $cr := include "epinio-route-traefik-option" (list $cfg .domain "certResolver") -}}
+{{- $ti := include "epinio-route-traefik-option" (list $cfg .domain "tlsIssuer") -}}
+{{- if and (ne $cr "") (ne $ti "") -}}
+{{- fail (printf "traefik certResolver and tlsIssuer are mutually exclusive for domain %s" .domain) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
