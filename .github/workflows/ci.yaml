@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["*"]
+    branches: ["main"]
   pull_request:
     branches: [main]
 
@@ -19,18 +19,17 @@ jobs:
 
   package:
     needs: test
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      changed: ${{ steps.version.outputs.changed }}
+      needs_release: ${{ steps.version.outputs.needs_release }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - uses: mikefarah/yq@v4
-      - name: Check version change & pre-release
+      - name: Check version tag & pre-release
         id: version
         run: |
           VERSION=$(yq '.version' < chart/application/Chart.yaml)
@@ -40,27 +39,23 @@ jobs:
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-            git fetch --unshallow
-          fi
-          PREV_VERSION=$(git show HEAD~1:chart/application/Chart.yaml 2>/dev/null | yq '.version' || echo "")
-          if [ "$VERSION" != "$PREV_VERSION" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "needs_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "needs_release=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Package chart
-        if: steps.version.outputs.changed == 'true'
+        if: steps.version.outputs.needs_release == 'true'
         run: helm package chart/application
       - uses: actions/upload-artifact@v4
-        if: steps.version.outputs.changed == 'true'
+        if: steps.version.outputs.needs_release == 'true'
         with:
           name: chart-package
           path: epinio-application-traefiked-${{ steps.version.outputs.version }}.tgz
 
   release:
     needs: package
-    if: needs.package.outputs.changed == 'true'
+    if: needs.package.outputs.needs_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
