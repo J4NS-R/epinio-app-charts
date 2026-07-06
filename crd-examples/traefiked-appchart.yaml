@@ -10,7 +10,5 @@ spec:
     # See Chart values.yaml for an example
     traefik:
       type: string
-    serviceAccount:
-      type: string
     priorityClassName:
       type: string

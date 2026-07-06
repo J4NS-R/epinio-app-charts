@@ -4,40 +4,14 @@ templates:
 values:
   - required.yaml
 tests:
-  - it: given no serviceAccount config then automountServiceAccountToken should be false and no serviceAccountName set
+  - it: assert service account
     asserts:
-      - equal:
-          path: spec.template.spec.automountServiceAccountToken
-          value: false
-      - notExists:
-          path: spec.template.spec.serviceAccountName
-      - notExists:
-          path: spec.template.spec.serviceAccount
-
-  - it: given serviceAccount disabled then automountServiceAccountToken should be false and no serviceAccountName set
-    set:
-      userConfig.serviceAccount: '{"enabled":false}'
-    asserts:
-      - equal:
-          path: spec.template.spec.automountServiceAccountToken
-          value: false
-      - notExists:
-          path: spec.template.spec.serviceAccountName
-      - notExists:
-          path: spec.template.spec.serviceAccount
-
-  - it: given serviceAccount enabled then serviceAccountName should be set and automountServiceAccountToken true
-    set:
-      userConfig.serviceAccount: '{"enabled":true}'
-    asserts:
-      - equal:
-          path: spec.template.spec.serviceAccountName
-          value: rmyapp-94e7d341f71ff6f43253f1c5e813057b22f91cda
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: true
-      - notExists:
-          path: spec.template.spec.serviceAccount
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: NAMESPACE
 
   - it: given no priorityClassName then it should not be present
     asserts:

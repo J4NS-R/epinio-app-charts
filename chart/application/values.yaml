@@ -37,6 +37,7 @@
 image:
   pullPolicy: IfNotPresent
 
+# ignored - image pull secrets work via service account
 imagePullSecrets: []
 
 epinio:
@@ -114,21 +115,6 @@ userConfig:
   #     }
   #   }
   traefik: "{}"
-
-  # `serviceAccount` is a JSON document configuring the application's service
-  # account. Currently supported fields:
-  #
-  #   enabled (boolean, default false) – when true, a ServiceAccount resource
-  #     is created and the deployment's serviceAccountName is set to it; the
-  #     pod's automountServiceAccountToken is set to true. When false (default),
-  #     no ServiceAccount is created, no serviceAccountName is set, and
-  #     automountServiceAccountToken is set to false.
-  #
-  # serviceAccount: |
-  #   {
-  #     "enabled": true
-  #   }
-  serviceAccount: "{}"
 
   # `priorityClassName` is a plain string. When specified (non-empty), the
   # deployment's spec.template.spec.priorityClassName is set to this value.
