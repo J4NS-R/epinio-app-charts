@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "*-*"]  # feature-style branches like 1.2.x
+    branches: ["*"]
   pull_request:
     branches: [main]
 
