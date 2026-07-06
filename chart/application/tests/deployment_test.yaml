@@ -1,0 +1,53 @@
+suite: deployment tests
+templates:
+  - templates/deployment.yaml
+values:
+  - required.yaml
+tests:
+  - it: given no serviceAccount config then automountServiceAccountToken should be false and no serviceAccountName set
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - notExists:
+          path: spec.template.spec.serviceAccountName
+      - notExists:
+          path: spec.template.spec.serviceAccount
+
+  - it: given serviceAccount disabled then automountServiceAccountToken should be false and no serviceAccountName set
+    set:
+      userConfig.serviceAccount: '{"enabled":false}'
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - notExists:
+          path: spec.template.spec.serviceAccountName
+      - notExists:
+          path: spec.template.spec.serviceAccount
+
+  - it: given serviceAccount enabled then serviceAccountName should be set and automountServiceAccountToken true
+    set:
+      userConfig.serviceAccount: '{"enabled":true}'
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: rmyapp-94e7d341f71ff6f43253f1c5e813057b22f91cda
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
+      - notExists:
+          path: spec.template.spec.serviceAccount
+
+  - it: given no priorityClassName then it should not be present
+    asserts:
+      - notExists:
+          path: spec.template.spec.priorityClassName
+
+  - it: given a priorityClassName then it should be set on the pod spec
+    set:
+      userConfig.priorityClassName: high-priority
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: high-priority

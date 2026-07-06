@@ -104,3 +104,32 @@ epinio push --name nederkaans --app-chart traefiked \
 
 The `epinio.tlsIssuer` field is deprecated and ignored; use the per-domain
 `tlsIssuer` in `userConfig.traefik` instead.
+
+## Service Account
+
+`userConfig.serviceAccount` is a JSON string that controls whether the
+deployment uses a dedicated service account:
+
+```yaml
+userConfig:
+  serviceAccount: |
+    {
+      "enabled": true
+    }
+```
+
+- `enabled` (boolean, default `false`): when `true`, the chart creates a
+  `ServiceAccount` resource and sets the deployment's `serviceAccountName` to
+  it, with `automountServiceAccountToken: true`. When `false` (the default),
+  no `ServiceAccount` is created, no `serviceAccountName` is set on the pod,
+  and `automountServiceAccountToken` is set to `false`.
+
+## Priority Class
+
+`userConfig.priorityClassName` is a plain string. When specified (non-empty),
+the deployment's `spec.template.spec.priorityClassName` is set to this value:
+
+```yaml
+userConfig:
+  priorityClassName: high-priority
+```

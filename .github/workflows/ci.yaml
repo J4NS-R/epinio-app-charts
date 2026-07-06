@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "*-*"]  # feature-style branches like 1.2.x
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/chart-testing-action@v2
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+      - name: Run tests
+        run: helm unittest chart/application
+
+  package:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      changed: ${{ steps.version.outputs.changed }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: mikefarah/yq@v4
+      - name: Check version change & pre-release
+        id: version
+        run: |
+          VERSION=$(yq '.version' < chart/application/Chart.yaml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow
+          fi
+          PREV_VERSION=$(git show HEAD~1:chart/application/Chart.yaml 2>/dev/null | yq '.version' || echo "")
+          if [ "$VERSION" != "$PREV_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Package chart
+        if: steps.version.outputs.changed == 'true'
+        run: helm package chart/application
+      - uses: actions/upload-artifact@v4
+        if: steps.version.outputs.changed == 'true'
+        with:
+          name: chart-package
+          path: epinio-application-traefiked-${{ steps.version.outputs.version }}.tgz
+
+  release:
+    needs: package
+    if: needs.package.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart-package
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.package.outputs.version }}
+          prerelease: ${{ needs.package.outputs.prerelease == 'true' }}
+          files: epinio-application-traefiked-${{ needs.package.outputs.version }}.tgz
