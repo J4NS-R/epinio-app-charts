@@ -1,10 +1,19 @@
-{{- include "epinio-validate-no-tls-conflict" . -}}
 {{- $cfg := include "epinio-traefik-config" . | fromJson -}}
 {{- range .Values.epinio.routes }}
-{{- $ep := include "epinio-route-traefik-option" (list $cfg .domain "entryPoint") -}}
-{{- $cr := include "epinio-route-traefik-option" (list $cfg .domain "certResolver") -}}
-{{- $ti := include "epinio-route-traefik-option" (list $cfg .domain "tlsIssuer") -}}
+{{- $ep := include "epinio-route-entrypoint" (list $cfg .domain) -}}
+{{- $ti := include "epinio-route-tls-issuer" (list $cfg .domain) -}}
 {{- $tlsOpts := include "epinio-route-traefik-tls-options" (list $cfg .domain) | fromJson -}}
+{{- $hasTLS := include "epinio-route-has-tls" (list $ep (empty $tlsOpts)) -}}
+{{- $mws := list -}}
+{{- $dom := index $cfg .domain -}}
+{{- if $dom -}}{{- if hasKey $dom "middlewares" -}}{{- $mws = index $dom "middlewares" -}}{{- end -}}{{- end -}}
+{{- if eq $ep "websecure" -}}
+{{- $hasCrowdsec := false -}}
+{{- range $mws -}}{{- if and (eq .name "crowdsec") (eq .namespace "crowdsec") -}}{{- $hasCrowdsec = true -}}{{- end -}}{{- end -}}
+{{- if not $hasCrowdsec -}}
+{{- $mws = prepend $mws (dict "name" "crowdsec" "namespace" "crowdsec") -}}
+{{- end -}}
+{{- end -}}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -19,20 +28,26 @@ spec:
   {{- with $.Values.epinio.ingress }}
   ingressClassName: {{ . | quote }}
   {{- end }}
-  {{- if not (empty $ep) }}
   entryPoints:
     - {{ $ep | quote }}
-  {{- end }}
   routes:
   - match: Host(`{{ .domain }}`) && PathPrefix(`{{ .path }}`)
     kind: Rule
+    {{- if $mws }}
+    middlewares:
+    {{- range $mws }}
+      - name: {{ .name | quote }}
+        {{- if .namespace }}
+        namespace: {{ .namespace | quote }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
     services:
     - name: {{ include "epinio-app-service-name" $ }}
       port: 8080
-  {{- if and (empty $tlsOpts) (empty $cr) (empty $ti) }}
-  tls: {}
-  {{- else }}
+  {{- if $hasTLS }}
   tls:
+    secretName: {{ include "epinio-tls-secret-name" (list $.Values.epinio.appName .domain) | quote }}
     {{- if not (empty $tlsOpts) }}
     options:
       {{- with $tlsOpts.name }}
@@ -41,11 +56,6 @@ spec:
       {{- with $tlsOpts.namespace }}
       namespace: {{ . | quote }}
       {{- end }}
-    {{- end }}
-    {{- if not (empty $ti) }}
-    secretName: {{ include "epinio-tls-secret-name" (list $.Values.epinio.appName .domain) | quote }}
-    {{- else if not (empty $cr) }}
-    certResolver: {{ $cr | quote }}
     {{- end }}
   {{- end }}
 {{ end }}

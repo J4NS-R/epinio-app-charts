@@ -1,10 +1,13 @@
-{{- include "epinio-validate-no-tls-conflict" . -}}
 {{- $cfg := include "epinio-traefik-config" . | fromJson -}}
 {{- $seen := dict -}}
 {{- range .Values.epinio.routes }}
-{{- $ti := include "epinio-route-traefik-option" (list $cfg .domain "tlsIssuer") -}}
-{{- if and (ne $ti "") (not (hasKey $seen .domain)) -}}
+{{- if not (hasKey $seen .domain) -}}
 {{- $_ := set $seen .domain true -}}
+{{- $ep := include "epinio-route-entrypoint" (list $cfg .domain) -}}
+{{- $tlsOpts := include "epinio-route-traefik-tls-options" (list $cfg .domain) | fromJson -}}
+{{- $hasTLS := include "epinio-route-has-tls" (list $ep (empty $tlsOpts)) -}}
+{{- if $hasTLS -}}
+{{- $ti := include "epinio-route-tls-issuer" (list $cfg .domain) -}}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -23,5 +26,6 @@ spec:
     name: {{ $ti }}
     kind: ClusterIssuer
     group: cert-manager.io
+{{- end }}
 {{- end }}
 {{ end }}
