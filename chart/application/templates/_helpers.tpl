@@ -204,38 +204,3 @@ the cert-manager Certificate (metadata.name, spec.secretName).
 {{- $domain := index . 1 -}}
 {{ include "epinio-truncate" (print $appName "-" $domain "-tls") }}
 {{- end }}
-
-{{/*
-Parse userConfig.serviceAccount into a config map.
-
-The value is a JSON document with fields like "enabled". Missing/empty ->
-empty map. Malformed JSON or a non-object top-level value -> fail with a clear
-message naming the setting.
-
-Returns the parsed map (round-tripped through toJson so callers can safely
-fromJson it back into a map, even when it is the empty {}).
-*/}}
-{{- define "epinio-serviceaccount-config" -}}
-{{- $raw := .Values.userConfig.serviceAccount | default "" -}}
-{{- if eq (trim $raw) "" -}}
-{}
-{{- else -}}
-{{- $parsed := $raw | fromJson -}}
-{{- if hasKey $parsed "Error" -}}
-{{- fail (printf "userConfig.serviceAccount is not valid JSON: %s" $parsed.Error) -}}
-{{- end -}}
-{{- $parsed | toJson -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Resolve whether the service account is enabled.
-
-Returns "true" when userConfig.serviceAccount.enabled is true, "" otherwise.
-*/}}
-{{- define "epinio-serviceaccount-enabled" -}}
-{{- $cfg := include "epinio-serviceaccount-config" . | fromJson -}}
-{{- if hasKey $cfg "enabled" -}}
-{{- if $cfg.enabled -}}true{{- end -}}
-{{- end -}}
-{{- end }}
