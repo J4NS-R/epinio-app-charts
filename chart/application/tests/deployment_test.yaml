@@ -1,0 +1,27 @@
+suite: deployment tests
+templates:
+  - templates/deployment.yaml
+values:
+  - required.yaml
+tests:
+  - it: assert service account
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: NAMESPACE
+
+  - it: given no priorityClassName then it should not be present
+    asserts:
+      - notExists:
+          path: spec.template.spec.priorityClassName
+
+  - it: given a priorityClassName then it should be set on the pod spec
+    set:
+      userConfig.priorityClassName: high-priority
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: high-priority

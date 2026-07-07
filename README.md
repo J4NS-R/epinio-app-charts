@@ -13,13 +13,12 @@ JSON document:
 userConfig:
   traefik: |
     {
-      "*": {
-        "entryPoint": "websecure"
-      },
       "secure.example.com": {
         "entryPoint":   "websecure",
-        "certResolver": "letsencrypt",
-        "tlsOptions": { "name": "my-tls-option", "namespace": "default" }
+        "tlsOptions": { "name": "my-tls-option", "namespace": "default" },
+        "middlewares": [
+          { "name": "ratelimit", "namespace": "traefik" }
+        ]
       },
       "issued.example.com": {
         "entryPoint": "websecure",
@@ -28,24 +27,31 @@ userConfig:
     }
 ```
 
-- Top-level keys are domains, plus a reserved `"*"` fallback for any route
-  whose domain is not explicitly listed.
-- Inner fields (`entryPoint`, `certResolver`, `tlsOptions`, `tlsIssuer`) are
-  all optional; omitting one leaves it unset for that domain.
-- `tlsOptions` is resolved as a whole object (`name` and `namespace` both
-  optional inside it).
-- Resolution per route, per field:
-  `config[domain].field` -> `config["*"].field` -> unset.
+- Inner fields (`entryPoint`, `tlsIssuer`, `tlsOptions`, `middlewares`) are all
+  optional; omitting one leaves it at its default for that domain.
+- `middlewares` is an array of `{name, namespace}` objects. When the resolved
+  `entryPoint` is `"websecure"`, the middleware `{"name":"crowdsec","namespace":"crowdsec"}`
+  is automatically prepended unless already present.
+
+### Defaults per domain
+
+| Setting | External domain | `*.internal.foss.net.za` domain |
+|---------|-----------------|----------------------------------|
+| `entryPoint` | `"websecure"` | `"internalsecure"` |
+| `tlsIssuer` | `"letsencrypt-production"` | `"step-ca"` |
+
+TLS is enabled when the resolved `entryPoint` ends with `"secure"` or when
+`tlsOptions` is explicitly set for the domain.
+
+### cert-manager Certificate
 
 `tlsIssuer` enables cert-manager certificate issuance for a domain. When set,
 the chart generates a cert-manager `Certificate` (one per domain, deduplicated
 across routes sharing that domain) and the `IngressRoute` references it via
-`tls.secretName`. It is mutually exclusive with `certResolver` for the same
-  domain: setting both fails the render with a clear message.
+`tls.secretName`.
 
 Epinio only validates that the `traefik` setting exists and is a string; the
-JSON structure is enforced at chart render time (a malformed value fails the
-render with a clear message).
+JSON structure is enforced at chart render time.
 
 ### Example: `epinio push`
 
@@ -57,14 +63,14 @@ every inner `"`. With `jq -c` to compact the JSON, this looks like:
 ```bash
 TRAEFIK=$(jq -c '.' <<'EOF'
 {
-  "*": {
-    "entryPoint": "internalsecure",
-    "certResolver": "step-ca"
+  "secure.example.com": {
+    "entryPoint": "websecure",
+    "tlsIssuer": "letsencrypt-production"
   }
 }
 EOF
 )
-epinio push --name nederkaans --app-chart traefiked \
+epinio push --name myapp --app-chart traefiked \
   -v "\"traefik=${TRAEFIK//\"/\"\"}\""
 ```
 
@@ -74,8 +80,8 @@ wrap the field for the CSV parser. If you prefer, you can skip the variable and
 write the escaped literal yourself:
 
 ```bash
-epinio push --name nederkaans --app-chart traefiked \
-  -v "\"traefik={""*"":{""entryPoint"":""internalsecure"",""certResolver"":""step-ca""}}\""
+epinio push --name myapp --app-chart traefiked \
+  -v "\"traefik={""secure.example.com"":{""entryPoint"":""websecure"",""tlsIssuer"":""letsencrypt-production""}}\""
 ```
 
 ### Example: cert-managed TLS per domain
@@ -88,19 +94,26 @@ two stay in sync:
 ```bash
 TRAEFIK=$(jq -c '.' <<'EOF'
 {
-  "*": {
-    "entryPoint": "internalsecure"
+  "secure.example.com": {
+    "entryPoint": "websecure"
   },
   "issued.example.com": {
-    "entryPoint": "internalsecure",
+    "entryPoint": "websecure",
     "tlsIssuer": "my-cluster-issuer"
   }
 }
 EOF
 )
-epinio push --name nederkaans --app-chart traefiked \
+epinio push --name myapp --app-chart traefiked \
   -v "\"traefik=${TRAEFIK//\"/\"\"}\""
 ```
 
-The `epinio.tlsIssuer` field is deprecated and ignored; use the per-domain
-`tlsIssuer` in `userConfig.traefik` instead.
+## Priority Class
+
+`userConfig.priorityClassName` is a plain string. When specified (non-empty),
+the deployment's `spec.template.spec.priorityClassName` is set to this value:
+
+```yaml
+userConfig:
+  priorityClassName: high-priority
+```

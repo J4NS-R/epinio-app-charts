@@ -4,7 +4,7 @@ templates:
 values:
   - required.yaml
 tests:
-  - it: given no traefik userConfig then should render a bare IngressRoute with empty tls and no entryPoints
+  - it: given no traefik userConfig then should render an IngressRoute with default entryPoint websecure, tls block, and crowdsec middleware
     asserts:
       - hasDocuments:
            count: 1
@@ -12,15 +12,15 @@ tests:
            of: IngressRoute
       - isAPIVersion:
            of: traefik.io/v1alpha1
-      - notExists:
-           path: spec.entryPoints
       - equal:
-           path: spec.tls
-           value: {}
+           path: spec.entryPoints
+           value:
+             - websecure
+      - equal:
+           path: spec.tls.secretName
+           value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
       - notExists:
            path: spec.tls.options
-      - notExists:
-           path: spec.tls.certResolver
       - matchRegex:
            path: spec.routes[0].match
            pattern: "^Host\\(`app\\.example\\.com`\\) && PathPrefix\\(`/`\\)$"
@@ -30,6 +30,12 @@ tests:
       - equal:
            path: spec.routes[0].services[0].port
            value: 8080
+      - equal:
+           path: spec.routes[0].middlewares[0].name
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[0].namespace
+           value: crowdsec
 
   - it: given a custom appListeningPort then the route service port should stay 8080 (Service port)
     set:
@@ -52,85 +58,83 @@ tests:
       - notExists:
            path: spec.ingressClassName
 
-  - it: given a traefik "*" entryPoint then entryPoints should be set on every route
-    set:
-      userConfig.traefik: '{"*":{"entryPoint":"websecure"}}'
-    asserts:
-      - equal:
-           path: spec.entryPoints
-           value:
-             - websecure
-
-  - it: given a per-domain entryPoint then it should win over the "*" fallback
+  - it: given a non-secure entryPoint then the tls block should be absent
     set:
       epinio.routes:
         - id: r1
           domain: app.example.com
           path: /
-      userConfig.traefik: '{"*":{"entryPoint":"web"},"app.example.com":{"entryPoint":"websecure"}}'
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"web"}}'
     asserts:
       - equal:
            path: spec.entryPoints
            value:
-             - websecure
+             - web
+      - notExists:
+           path: spec.tls
 
-  - it: given a per-domain certResolver then tls.certResolver should be set
+  - it: given a non-secure entryPoint with middlewares then the tls block should be absent
     set:
-      userConfig.traefik: '{"app.example.com":{"certResolver":"letsencrypt"}}'
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"web","middlewares":[{"name":"my-mw","namespace":"default"}]}}'
     asserts:
       - equal:
-            path: spec.tls.certResolver
-            value: letsencrypt
+           path: spec.entryPoints
+           value:
+             - web
       - notExists:
-            path: spec.tls.secretName
+           path: spec.tls
 
-  - it: given a per-domain tlsIssuer then tls.secretName should be set and certResolver absent
+  - it: given a non-secure entryPoint with tlsOptions then the tls block should be present with tlsOptions only
+    set:
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"web","tlsOptions":{"name":"my-opt","namespace":"default"}}}'
+    asserts:
+      - equal:
+           path: spec.entryPoints
+           value:
+             - web
+      - equal:
+           path: spec.tls.options.name
+           value: my-opt
+      - equal:
+           path: spec.tls.options.namespace
+           value: default
+
+  - it: given a domain ending with .internal.foss.net.za then entryPoint should default to internalsecure with tls
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.internal.foss.net.za
+          path: /
+    asserts:
+      - equal:
+           path: spec.entryPoints
+           value:
+             - internalsecure
+      - equal:
+           path: spec.tls.secretName
+           value: rmyapp-appinternalfoss-23f18506cd2805429d2a65dedda3db898f293f8a
+
+  - it: given a per-domain tlsIssuer then it should override the default
     set:
       userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-cluster-issuer"}}'
     asserts:
       - equal:
-            path: spec.tls.secretName
-            value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
-      - notExists:
-            path: spec.tls.certResolver
+           path: spec.tls.secretName
+           value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
 
-  - it: given a "*" tlsIssuer then tls.secretName should be set on every route
-    set:
-      epinio.routes:
-        - id: r1
-          domain: a.example.com
-          path: /
-        - id: r2
-          domain: b.example.com
-          path: /
-      userConfig.traefik: '{"*":{"tlsIssuer":"star-issuer"}}'
-    asserts:
-      - hasDocuments:
-            count: 2
-      - documentIndex: 0
-        equal:
-            path: spec.tls.secretName
-            value: rmyapp-aexamplecom-tls-88bde42bfaa26aa7c5fdf4de6adff7deb6e8d041
-      - documentIndex: 1
-        equal:
-            path: spec.tls.secretName
-            value: rmyapp-bexamplecom-tls-40ed72b7b27e54f1c9f18c275b70207fc03803a1
-
-  - it: given a per-domain tlsIssuer then tlsOptions should still apply alongside secretName
+  - it: given a per-domain tlsIssuer with tlsOptions then both should appear in the IngressRoute
     set:
       userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-issuer","tlsOptions":{"name":"my-opt","namespace":"default"}}}'
     asserts:
       - equal:
-            path: spec.tls.secretName
-            value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
+           path: spec.tls.secretName
+           value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
       - equal:
-            path: spec.tls.options.name
-            value: my-opt
+           path: spec.tls.options.name
+           value: my-opt
       - equal:
-            path: spec.tls.options.namespace
-            value: default
-      - notExists:
-            path: spec.tls.certResolver
+           path: spec.tls.options.namespace
+           value: default
 
   - it: given a per-domain tlsOptions with name and namespace then tls.options should carry both
     set:
@@ -163,27 +167,6 @@ tests:
            path: spec.tls.options.namespace
            value: default
 
-  - it: given "*" tlsOptions and no per-domain tlsOptions then the "*" tlsOptions should apply
-    set:
-      userConfig.traefik: '{"*":{"tlsOptions":{"name":"star-opt","namespace":"star-ns"}}}'
-    asserts:
-      - equal:
-           path: spec.tls.options.name
-           value: star-opt
-      - equal:
-           path: spec.tls.options.namespace
-           value: star-ns
-
-  - it: given per-domain tlsOptions then it should fully override the "*" tlsOptions (no field merge)
-    set:
-      userConfig.traefik: '{"*":{"tlsOptions":{"name":"star-opt","namespace":"star-ns"}},"app.example.com":{"tlsOptions":{"name":"dom-opt"}}}'
-    asserts:
-      - equal:
-           path: spec.tls.options.name
-           value: dom-opt
-      - notExists:
-           path: spec.tls.options.namespace
-
   - it: given two routes on different domains then each route should resolve its own per-domain entryPoint
     set:
       epinio.routes:
@@ -193,7 +176,7 @@ tests:
         - id: r2
           domain: b.example.com
           path: /
-      userConfig.traefik: '{"a.example.com":{"entryPoint":"web"},"b.example.com":{"entryPoint":"websecure"}}'
+      userConfig.traefik: '{"a.example.com":{"entryPoint":"web"},"b.example.com":{"entryPoint":"internalsecure"}}'
     asserts:
       - hasDocuments:
            count: 2
@@ -202,11 +185,18 @@ tests:
            path: spec.entryPoints
            value:
              - web
+      - documentIndex: 0
+        notExists:
+           path: spec.tls
       - documentIndex: 1
         equal:
            path: spec.entryPoints
            value:
-             - websecure
+             - internalsecure
+      - documentIndex: 1
+        equal:
+           path: spec.tls.secretName
+           value: rmyapp-bexamplecom-tls-40ed72b7b27e54f1c9f18c275b70207fc03803a1
 
   - it: given two routes on the same domain then both should resolve the same per-domain entryPoint
     set:
@@ -232,29 +222,17 @@ tests:
            value:
              - websecure
 
-  - it: given a route whose domain is unlisted and no "*" fallback then its options should be unset
-    set:
-      userConfig.traefik: '{"other.example.com":{"entryPoint":"web"}}'
-    asserts:
-      - notExists:
-           path: spec.entryPoints
-      - equal:
-           path: spec.tls
-           value: {}
-      - notExists:
-           path: spec.tls.options
-      - notExists:
-           path: spec.tls.certResolver
-
-  - it: given an empty traefik object then it should render a bare route (equivalent to no setting)
+  - it: given an empty traefik object then it should render with defaults
     set:
       userConfig.traefik: '{}'
     asserts:
-      - notExists:
-           path: spec.entryPoints
       - equal:
-           path: spec.tls
-           value: {}
+           path: spec.entryPoints
+           value:
+             - websecure
+      - equal:
+           path: spec.tls.secretName
+           value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
 
   - it: given a route with a path and domain then the match rule should combine Host and PathPrefix
     set:
@@ -278,40 +256,21 @@ tests:
           path: /v2
     asserts:
       - hasDocuments:
-          count: 2
+           count: 2
 
-  - it: given a route.secret then no Certificate resource should be rendered (secret support dropped)
+  - it: given a "*" key in traefik config then rendering should fail
     set:
-      epinio.routes:
-        - id: r1
-          domain: app.example.com
-          path: /
-          secret: my-tls-secret
-    asserts:
-      - hasDocuments:
-          count: 1
-      - isKind:
-          of: IngressRoute
-      - notExists:
-          path: spec.tls.secretName
-
-  - it: given the chart is rendered then no cert-manager Certificate resource should be present
-    asserts:
-      - notFailedTemplate: {}
-
-  - it: given both tlsIssuer and certResolver for the same domain then rendering should fail
-    set:
-      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-issuer","certResolver":"letsencrypt"}}'
+      userConfig.traefik: '{"*":{"entryPoint":"websecure"}}'
     asserts:
       - failedTemplate:
-            errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
+           errorPattern: 'the "\*" wildcard key is no longer supported'
 
-  - it: given a "*" tlsIssuer and a per-domain certResolver then rendering should fail
+  - it: given a certResolver field in traefik config then rendering should fail
     set:
-      userConfig.traefik: '{"*":{"tlsIssuer":"my-issuer"},"app.example.com":{"certResolver":"letsencrypt"}}'
+      userConfig.traefik: '{"app.example.com":{"certResolver":"letsencrypt"}}'
     asserts:
       - failedTemplate:
-            errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
+           errorPattern: '"certResolver" is no longer supported'
 
   - it: given a malformed traefik JSON then rendering should fail with a clear message
     set:
@@ -326,3 +285,137 @@ tests:
     asserts:
       - failedTemplate:
            errorPattern: "userConfig\\.traefik is not valid JSON"
+
+  - it: given a mixed internal and external domain then each route gets its own default entryPoint and tlsIssuer
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.example.com
+          path: /
+        - id: r2
+          domain: svc.internal.foss.net.za
+          path: /
+    asserts:
+      - hasDocuments:
+           count: 2
+      - documentIndex: 0
+        equal:
+           path: spec.entryPoints
+           value:
+             - websecure
+      - documentIndex: 0
+        equal:
+           path: spec.tls.secretName
+           value: rmyapp-appexamplecom-t-0862101499cd8ed555acce0ac207778c8bb17499
+      - documentIndex: 1
+        equal:
+           path: spec.entryPoints
+           value:
+             - internalsecure
+      - documentIndex: 1
+        equal:
+           path: spec.tls.secretName
+           value: rmyapp-svcinternalfoss-faa340b675eee01963ca713d6a3ba7919c228e0f
+
+  - it: given a websecure entryPoint then the crowdsec middleware should be auto-injected as the first middleware
+    set:
+      userConfig.traefik: '{"app.example.com":{"middlewares":[{"name":"ratelimit","namespace":"traefik"}]}}'
+    asserts:
+      - equal:
+           path: spec.routes[0].middlewares[0].name
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[0].namespace
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[1].name
+           value: ratelimit
+      - equal:
+           path: spec.routes[0].middlewares[1].namespace
+           value: traefik
+
+  - it: given an internalsecure entryPoint then no crowdsec middleware should be auto-injected
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.internal.foss.net.za
+          path: /
+    asserts:
+      - equal:
+           path: spec.entryPoints
+           value:
+             - internalsecure
+      - notExists:
+           path: spec.routes[0].middlewares
+
+  - it: given a websecure entryPoint with user middlewares then crowdsec should be prepended
+    set:
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"websecure","middlewares":[{"name":"my-mw","namespace":"default"}]}}'
+    asserts:
+      - equal:
+           path: spec.routes[0].middlewares[0].name
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[0].namespace
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[1].name
+           value: my-mw
+      - equal:
+           path: spec.routes[0].middlewares[1].namespace
+           value: default
+
+  - it: given a websecure entryPoint where the user already specifies the crowdsec middleware then it should not be duplicated
+    set:
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"websecure","middlewares":[{"name":"crowdsec","namespace":"crowdsec"}]}}'
+    asserts:
+      - equal:
+           path: spec.routes[0].middlewares
+           value:
+             - name: crowdsec
+               namespace: crowdsec
+
+  - it: given a websecure entryPoint where user specifies crowdsec middleware among others then it should not be duplicated
+    set:
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"websecure","middlewares":[{"name":"ratelimit","namespace":"traefik"},{"name":"crowdsec","namespace":"crowdsec"}]}}'
+    asserts:
+      - equal:
+           path: spec.routes[0].middlewares[0].name
+           value: ratelimit
+      - equal:
+           path: spec.routes[0].middlewares[1].name
+           value: crowdsec
+      - lengthEqual:
+           path: spec.routes[0].middlewares
+           count: 2
+
+  - it: given a non-websecure entryPoint explicitly set then no crowdsec middleware should be auto-injected
+    set:
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"web","middlewares":[{"name":"my-mw","namespace":"default"}]}}'
+    asserts:
+      - equal:
+           path: spec.entryPoints
+           value:
+             - web
+      - equal:
+           path: spec.routes[0].middlewares[0].name
+           value: my-mw
+      - lengthEqual:
+           path: spec.routes[0].middlewares
+           count: 1
+
+  - it: given a middleware without namespace then only the name should be rendered
+    set:
+      userConfig.traefik: '{"app.example.com":{"middlewares":[{"name":"my-mw"}]}}'
+    asserts:
+      - equal:
+           path: spec.routes[0].middlewares[0].name
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[0].namespace
+           value: crowdsec
+      - equal:
+           path: spec.routes[0].middlewares[1].name
+           value: my-mw
+      - notExists:
+           path: spec.routes[0].middlewares[1].namespace

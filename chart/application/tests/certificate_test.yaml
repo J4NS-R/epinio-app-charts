@@ -4,14 +4,7 @@ templates:
 values:
   - required.yaml
 tests:
-  - it: given no tlsIssuer then no Certificate resource should be rendered
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: given a per-domain tlsIssuer then a Certificate should be rendered referencing that issuer
-    set:
-      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-cluster-issuer"}}'
+  - it: given no traefik userConfig then a Certificate should be rendered with the default tlsIssuer
     asserts:
       - hasDocuments:
           count: 1
@@ -30,7 +23,7 @@ tests:
           value: app.example.com
       - equal:
           path: spec.issuerRef.name
-          value: my-cluster-issuer
+          value: letsencrypt-production
       - equal:
           path: spec.issuerRef.kind
           value: ClusterIssuer
@@ -38,7 +31,36 @@ tests:
           path: spec.issuerRef.group
           value: cert-manager.io
 
-  - it: given a "*" tlsIssuer then one Certificate per route domain should be rendered
+  - it: given a domain ending with .internal.foss.net.za then tlsIssuer should default to step-ca
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.internal.foss.net.za
+          path: /
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.dnsNames[0]
+          value: app.internal.foss.net.za
+      - equal:
+          path: spec.issuerRef.name
+          value: step-ca
+
+  - it: given a per-domain tlsIssuer then it should override the default
+    set:
+      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-cluster-issuer"}}'
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.dnsNames[0]
+          value: app.example.com
+      - equal:
+          path: spec.issuerRef.name
+          value: my-cluster-issuer
+
+  - it: given two routes on different domains then one Certificate per domain should be rendered
     set:
       epinio.routes:
         - id: r1
@@ -47,7 +69,6 @@ tests:
         - id: r2
           domain: b.example.com
           path: /
-      userConfig.traefik: '{"*":{"tlsIssuer":"star-issuer"}}'
     asserts:
       - hasDocuments:
           count: 2
@@ -58,7 +79,7 @@ tests:
       - documentIndex: 0
         equal:
           path: spec.issuerRef.name
-          value: star-issuer
+          value: letsencrypt-production
       - documentIndex: 1
         equal:
           path: spec.dnsNames[0]
@@ -66,7 +87,7 @@ tests:
       - documentIndex: 1
         equal:
           path: spec.issuerRef.name
-          value: star-issuer
+          value: letsencrypt-production
 
   - it: given two routes sharing a domain then only one Certificate should be rendered for that domain
     set:
@@ -77,7 +98,6 @@ tests:
         - id: r2
           domain: same.example.com
           path: /api
-      userConfig.traefik: '{"same.example.com":{"tlsIssuer":"my-issuer"}}'
     asserts:
       - hasDocuments:
           count: 1
@@ -85,7 +105,7 @@ tests:
           path: spec.dnsNames[0]
           value: same.example.com
 
-  - it: given tlsIssuer on only one of two routes then only one Certificate should be rendered
+  - it: given a per-domain tlsIssuer on only one of two routes then both get Certificates but with different issuers
     set:
       epinio.routes:
         - id: r1
@@ -97,24 +117,79 @@ tests:
       userConfig.traefik: '{"issued.example.com":{"tlsIssuer":"my-issuer"}}'
     asserts:
       - hasDocuments:
+          count: 2
+      - documentIndex: 0
+        equal:
+          path: spec.dnsNames[0]
+          value: issued.example.com
+      - documentIndex: 0
+        equal:
+          path: spec.issuerRef.name
+          value: my-issuer
+      - documentIndex: 1
+        equal:
+          path: spec.dnsNames[0]
+          value: plain.example.com
+      - documentIndex: 1
+        equal:
+          path: spec.issuerRef.name
+          value: letsencrypt-production
+
+  - it: given a "*" key in traefik config then rendering should fail
+    set:
+      userConfig.traefik: '{"*":{"entryPoint":"websecure"}}'
+    asserts:
+      - failedTemplate:
+          errorPattern: 'the "\*" wildcard key is no longer supported'
+
+  - it: given a certResolver field in traefik config then rendering should fail
+    set:
+      userConfig.traefik: '{"app.example.com":{"certResolver":"letsencrypt"}}'
+    asserts:
+      - failedTemplate:
+          errorPattern: '"certResolver" is no longer supported'
+
+  - it: given a mixed internal and external domain then each Certificate gets the correct issuer
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.example.com
+          path: /
+        - id: r2
+          domain: svc.internal.foss.net.za
+          path: /
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 0
+        equal:
+          path: spec.issuerRef.name
+          value: letsencrypt-production
+      - documentIndex: 1
+        equal:
+          path: spec.issuerRef.name
+          value: step-ca
+
+  - it: given a non-secure entryPoint then no Certificate should be rendered
+    set:
+      epinio.routes:
+        - id: r1
+          domain: app.example.com
+          path: /
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"web"}}'
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: given a non-secure entryPoint with tlsOptions then a Certificate should be rendered
+    set:
+      userConfig.traefik: '{"app.example.com":{"entryPoint":"web","tlsOptions":{"name":"my-opt"}}}'
+    asserts:
+      - hasDocuments:
           count: 1
       - equal:
           path: spec.dnsNames[0]
-          value: issued.example.com
+          value: app.example.com
       - equal:
           path: spec.issuerRef.name
-          value: my-issuer
-
-  - it: given both tlsIssuer and certResolver for the same domain then rendering should fail
-    set:
-      userConfig.traefik: '{"app.example.com":{"tlsIssuer":"my-issuer","certResolver":"letsencrypt"}}'
-    asserts:
-      - failedTemplate:
-          errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
-
-  - it: given a per-domain tlsIssuer overriding a "*" certResolver then rendering should fail
-    set:
-      userConfig.traefik: '{"*":{"certResolver":"letsencrypt"},"app.example.com":{"tlsIssuer":"my-issuer"}}'
-    asserts:
-      - failedTemplate:
-          errorPattern: "certResolver and tlsIssuer are mutually exclusive for domain app\\.example\\.com"
+          value: letsencrypt-production

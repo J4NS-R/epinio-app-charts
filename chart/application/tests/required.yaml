@@ -7,7 +7,6 @@ epinio:
       domain: app.example.com
       path: /
   ingress: ~
-  tlsIssuer: ~
   env: []
   configurations: []
   start: ~

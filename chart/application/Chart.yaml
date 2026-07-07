@@ -1,16 +1,16 @@
 apiVersion: v2
 name: epinio-application-traefiked
-description: The helm chart for epinio applications to be deployed by (with traefik native support)
+description: The helm chart for epinio applications to be deployed by (with traefik and cert-manager native support)
 icon: https://raw.githubusercontent.com/epinio/helm-charts/main/assets/epinio.png
-home: https://J4NS-R/epinio-app-charts
+home: https://github.com/J4NS-R/epinio-app-charts
 type: application
-version: 0.1.0
+version: 0.2.0
 keywords:
 - epinio
 - paas
 maintainers: []
 sources:
-- https://J4NS-R/epinio-app-charts
+- https://github.com/J4NS-R/epinio-app-charts
 annotations:
   # Same as upstream fork
   artifacthub.io/license: Apache-2.0

@@ -66,10 +66,10 @@ Application service name (truncated appName)
 {{/*
 Parse userConfig.traefik into a config map.
 
-The value is a JSON document mapping domain -> traefik configuration, with a
-reserved "*" key acting as the fallback for any route whose domain is not
-explicitly listed. Missing/empty -> empty map. Malformed JSON or a non-object
-top-level value -> fail with a clear message naming the setting.
+The value is a JSON document mapping domain -> traefik configuration. The
+reserved "*" key and the "certResolver" field are no longer supported and will
+cause a render failure. Missing/empty -> empty map. Malformed JSON or a
+non-object top-level value -> fail with a clear message naming the setting.
 
 Returns the parsed map (round-tripped through toJson so callers can safely
 fromJson it back into a map, even when it is the empty {}).
@@ -83,38 +83,92 @@ fromJson it back into a map, even when it is the empty {}).
 {{- if hasKey $parsed "Error" -}}
 {{- fail (printf "userConfig.traefik is not valid JSON: %s" $parsed.Error) -}}
 {{- end -}}
+{{- if hasKey $parsed "*" -}}
+{{- fail "userConfig.traefik: the \"*\" wildcard key is no longer supported; specify per-domain settings explicitly" -}}
+{{- end -}}
+{{- range $domain, $settings := $parsed -}}
+{{- if hasKey $settings "certResolver" -}}
+{{- fail (printf "userConfig.traefik: \"certResolver\" is no longer supported for domain %s; use tlsIssuer instead" $domain) -}}
+{{- end -}}
+{{- end -}}
 {{- $parsed | toJson -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-Resolve a scalar traefik option for a route.
+Resolve the entryPoint for a route.
 
-Arguments: (config, domain, field)
-Resolution precedence: config[domain].field -> config["*"].field -> "" (unset)
+Arguments: (config, domain)
+If config[domain].entryPoint is set, use it.
+Otherwise, if the domain ends with ".internal.foss.net.za" use "internalsecure".
+Otherwise, default to "websecure".
 
-Returns the resolved string value, or "" when unset. Callers should use
-`with`/`if not (empty ...)` to omit the corresponding rendered field.
+Returns the resolved entryPoint string.
 */}}
-{{- define "epinio-route-traefik-option" -}}
+{{- define "epinio-route-entrypoint" -}}
 {{- $cfg := index . 0 -}}
 {{- $domain := index . 1 -}}
-{{- $field := index . 2 -}}
-{{- $val := "" -}}
+{{- $ep := "" -}}
 {{- $dom := index $cfg $domain -}}
-{{- if $dom -}}{{- $val = index $dom $field | default "" -}}{{- end -}}
-{{- if eq $val "" -}}
-{{- $star := index $cfg "*" -}}
-{{- if $star -}}{{- $val = index $star $field | default "" -}}{{- end -}}
+{{- if $dom -}}{{- if hasKey $dom "entryPoint" -}}{{- $ep = index $dom "entryPoint" -}}{{- end -}}{{- end -}}
+{{- if eq $ep "" -}}
+{{- if regexMatch "\\.internal\\.foss\\.net\\.za$" $domain -}}
+{{- $ep = "internalsecure" -}}
+{{- else -}}
+{{- $ep = "websecure" -}}
 {{- end -}}
-{{- $val -}}
+{{- end -}}
+{{- $ep -}}
+{{- end }}
+
+{{/*
+Resolve whether a route should have a TLS block.
+
+Arguments: (entryPoint, tlsOptionsEmpty)
+Returns "true" when the entryPoint ends with "secure" or when tlsOptions
+is non-empty (i.e. the user explicitly set tlsOptions for this domain).
+Otherwise returns "" (falsy).
+*/}}
+{{- define "epinio-route-has-tls" -}}
+{{- $ep := index . 0 -}}
+{{- $tlsOptsEmpty := index . 1 -}}
+{{- $result := "" -}}
+{{- if regexMatch "secure$" $ep -}}{{- $result = "true" -}}{{- end -}}
+{{- if not $tlsOptsEmpty -}}{{- $result = "true" -}}{{- end -}}
+{{- $result -}}
+{{- end }}
+
+{{/*
+Resolve the tlsIssuer for a route.
+
+Arguments: (config, domain)
+If config[domain].tlsIssuer is set, use it.
+Otherwise, if the domain ends with ".internal.foss.net.za" use "step-ca".
+Otherwise, default to "letsencrypt-production".
+
+Returns the resolved tlsIssuer string.
+*/}}
+{{- define "epinio-route-tls-issuer" -}}
+{{- $cfg := index . 0 -}}
+{{- $domain := index . 1 -}}
+{{- $ti := "" -}}
+{{- $dom := index $cfg $domain -}}
+{{- if $dom -}}{{- if hasKey $dom "tlsIssuer" -}}{{- $ti = index $dom "tlsIssuer" -}}{{- end -}}{{- end -}}
+{{- if eq $ti "" -}}
+{{- if regexMatch "\\.internal\\.foss\\.net\\.za$" $domain -}}
+{{- $ti = "step-ca" -}}
+{{- else -}}
+{{- $ti = "letsencrypt-production" -}}
+{{- end -}}
+{{- end -}}
+{{- $ti -}}
 {{- end }}
 
 {{/*
 Resolve the tlsOptions object for a route.
 
 Arguments: (config, domain)
-Resolution precedence: config[domain].tlsOptions -> config["*"].tlsOptions -> unset
+Only looks at config[domain].tlsOptions (no wildcard fallback).
 
 Returns a JSON object {"name":..., "namespace":...} with only the fields that
 are present and non-empty in the resolved tlsOptions. Returns "{}" when no
@@ -126,10 +180,6 @@ tlsOptions applies, which callers detect via `empty`.
 {{- $t := dict -}}
 {{- $dom := index $cfg $domain -}}
 {{- if $dom -}}{{- if hasKey $dom "tlsOptions" -}}{{- $t = index $dom "tlsOptions" -}}{{- end -}}{{- end -}}
-{{- if empty $t -}}
-{{- $star := index $cfg "*" -}}
-{{- if $star -}}{{- if hasKey $star "tlsOptions" -}}{{- $t = index $star "tlsOptions" -}}{{- end -}}{{- end -}}
-{{- end -}}
 {{- $out := dict -}}
 {{- if not (empty $t) -}}
 {{- $name := index $t "name" | default "" -}}
@@ -153,25 +203,4 @@ the cert-manager Certificate (metadata.name, spec.secretName).
 {{- $appName := index . 0 -}}
 {{- $domain := index . 1 -}}
 {{ include "epinio-truncate" (print $appName "-" $domain "-tls") }}
-{{- end }}
-
-{{/*
-Ensure no route configures both a traefik certResolver and a cert-manager
-tlsIssuer for the same domain. The two are mutually exclusive: certResolver
-asks traefik to obtain the certificate, while tlsIssuer asks cert-manager to
-do so (the certificate is then referenced via tls.secretName).
-
-Argument: root context (.), so it can read .Values and the parsed traefik
-config. Fails the render with a clear message naming the conflicting domain
-if both are set for any route.
-*/}}
-{{- define "epinio-validate-no-tls-conflict" -}}
-{{- $cfg := include "epinio-traefik-config" . | fromJson -}}
-{{- range .Values.epinio.routes }}
-{{- $cr := include "epinio-route-traefik-option" (list $cfg .domain "certResolver") -}}
-{{- $ti := include "epinio-route-traefik-option" (list $cfg .domain "tlsIssuer") -}}
-{{- if and (ne $cr "") (ne $ti "") -}}
-{{- fail (printf "traefik certResolver and tlsIssuer are mutually exclusive for domain %s" .domain) -}}
-{{- end -}}
-{{- end -}}
 {{- end }}
