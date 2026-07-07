@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "*"]
   pull_request:
     branches: [main]
 
@@ -42,7 +42,22 @@ jobs:
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "needs_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "needs_release=true" >> "$GITHUB_OUTPUT"
+            BRANCH_NAME="${{ github.ref_name }}"
+            if [[ "$BRANCH_NAME" == "main" ]]; then
+              if [[ "$VERSION" != *-* ]]; then
+                echo "needs_release=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "needs_release=false" >> "$GITHUB_OUTPUT"
+                echo "Skipping final release from main branch for pre-release version $VERSION"
+              fi
+            else
+              if [[ "$VERSION" == *-* ]]; then
+                echo "needs_release=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "needs_release=false" >> "$GITHUB_OUTPUT"
+                echo "Skipping pre-release from non-main branch for final version $VERSION"
+              fi
+            fi
           fi
       - name: Package chart
         if: steps.version.outputs.needs_release == 'true'
